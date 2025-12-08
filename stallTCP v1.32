@@ -20,7 +20,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return new Response('OK', { status: 200 });
-//    if (env.UUID) UUID = env.UUID.trim();   //UUID 环境变量支持，snippet不能有
+    if (env.UUID) UUID = env.UUID.trim();   //UUID 环境变量支持，snippet不能有
     const { proxyIP, socks5, enableSocks, globalProxy } = parseProxyConfig(url.pathname);
     const { 0: client, 1: server } = new WebSocketPair();
     server.accept();
