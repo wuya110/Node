@@ -1,121 +1,56 @@
 /**
- * * 本脚本用于 Cloudflare Workers，
- * * 提供 Shadowsocks + WebSocket (WSS)，
- * * 用于解决 Quantumult X 在直连可用、但访问部分站点时
- * * 始终无法触发 proxyIP 回退的问题，
- * * Quantumult X / Shadowrocket 均可使用。
- *
- * * 提示：请绑定自定义域名使用，
- * * 部分网络环境下 workers.dev 的 443 端口可能无流量。
- *
- * * ================= 默认已经配置好的参数 =================
- * * （不修改环境变量也可以直接使用）
- *
- * * 优选 IP / 域名（客户端连接用）：
- * *   www.visa.cn
- *
- * * 直连失败时使用的备用代理：
- * *   ProxyIP.CMLiussss.net
- *
- * * 默认密码 / UUID：
- * *   0121c9a2-11e7-49cb-9cf6-1f2e06a3954d
- *
- * * ================= 建议用户自行修改的地方 =================
- *
- * * 修改方法（中文步骤）：
- * * 1. 登录 Cloudflare 官网
- * * 2. 进入 Workers & Pages
- * * 3. 点击当前 Worker
- * * 4. 打开 Settings（设置）
- * * 5. 找到 Variables（变量）
- * * 6. 添加【纯文本变量】：
+ * * Cloudflare Workers 极简高速版 (兼容 QX + 小火箭)
+ * * * * 核心功能：
+ * * 1. 智能分流：QX 自动返回 shadowscoks 原生格式，小火箭返回 ss:// 格式。
+ * * 2. 安全鉴权：只有路径完全匹配 /UUID 才能连接，防止被扫。
+ * * 3. 自动回退：直连失败自动走 ProxyIP。
  * *
- * *    变量名：PASSWORD
- * *    变量值：你自己的 UUID 或密码
- * *
- * *    变量名：SUB_PATH
- * *    变量值：sub（订阅路径，可自行修改）
- * *
- * *    变量名：PROXY_IP
- * *    变量值：你自己的 proxyIP（可选）
- * *
- * * 保存后立即生效，无需改代码。
- * *
- * * 订阅地址示例：
- * * https://你的域名/sub
+ * * 可配置的环境变量 (Variables):
+ * * - PASSWORD: 你的 UUID (不填则使用代码内默认值)
+ * * - PROXY_IP: 备用代理 IP/域名 (不填则使用代码内默认值)
+ * * - SUB_PATH: 订阅路径 (不填则默认为 sub)
  */
-
 
 import { connect } from 'cloudflare:sockets';
 
-function parseProxy(addr) {
-  if (!addr) return null;
-  const [host, port] = addr.split(':');
-  return { host, port: +(port || 443) };
-}
-
 export default {
   async fetch(req, env) {
-    /* ================= 1. 参数配置 ================= */
+    /* ================= 配置区域 (默认值) ================= */
+    // 如果环境变量里没填，就会用这里的值
     const DEFAULT_UUID = '0121c9a2-11e7-49cb-9cf6-1f2e06a3954d';
     const DEFAULT_PROXYIP = 'ProxyIP.CMLiussss.net';
     const DEFAULT_SUBPATH = 'sub';
-    const DEFAULT_SERVER = 'www.visa.cn';
+    const DEFAULT_SERVER = 'www.visa.cn'; // 优选域名/IP
 
-    /* ================= 2. 读取变量 ================= */
-    const PASSWORD = (env.PASSWORD || DEFAULT_UUID).trim();
+    /* ================= 逻辑处理 ================= */
+    const UUID = (env.PASSWORD || DEFAULT_UUID).trim();
     const PROXY_IP = (env.PROXY_IP || DEFAULT_PROXYIP).trim();
     const SUB_PATH = (env.SUB_PATH || DEFAULT_SUBPATH).trim();
 
     const url = new URL(req.url);
     const cleanPath = url.pathname.replace(/\/+$/, '').trim();
-    const workerHost = url.hostname;
-    const userAgent = (req.headers.get('User-Agent') || '').toLowerCase();
+    const host = url.hostname;
 
-    /* ================= 3. 智能订阅输出 ================= */
+    // 1. 订阅输出 (智能识别客户端)
     if (cleanPath === `/${SUB_PATH}`) {
-      let configContent = '';
+      const isQX = (req.headers.get('User-Agent') || '').toLowerCase().includes('quantumult');
+      let config = '';
 
-      // === 分支 A：如果是 Quantumult X ===
-      if (userAgent.includes('quantumult')) {
-        // 输出 QX 能完美识别的原生格式
-        configContent = `shadowsocks=${DEFAULT_SERVER}:443, method=none, password=${PASSWORD}, obfs=wss, obfs-host=${workerHost}, obfs-uri=/${PASSWORD}, fast-open=false, udp-relay=false, tag=CF-${workerHost}`;
-      
-      } 
-      // === 分支 B：如果是 Shadowrocket 或其他客户端 ===
-      else {
-        // 输出标准的 SS 链接 (Shadowrocket 完美支持)
-        const ssBase = btoa(`none:${PASSWORD}`);
-        // 注意：这里为了兼容性，把 plugin 参数进行编码
-        const pluginParams = `obfs=wss;obfs-host=${workerHost};obfs-uri=/${PASSWORD}`;
-        const pluginStr = `v2ray-plugin?${pluginParams}`; // 小火箭习惯这种格式
-        
-        // 另一种通用写法，确保 path 参数正确
-        configContent = 
-          `ss://${ssBase}@${DEFAULT_SERVER}:443` +
-          `?plugin=v2ray-plugin` +
-          `;mode=websocket` +
-          `;tls` +
-          `;host=${workerHost}` +
-          `;path=/${PASSWORD}` + // 必须带上路径
-          `;mux=0` +
-          `#CF-${workerHost}`;
+      if (isQX) {
+        // QX 专用原生格式 (解决 obfs 路径识别问题)
+        config = `shadowsocks=${DEFAULT_SERVER}:443,method=none,password=${UUID},obfs=wss,obfs-host=${host},obfs-uri=/${UUID},fast-open=false,udp-relay=false,tag=CF-${host}`;
+      } else {
+        // 小火箭/V2Ray 标准格式
+        config = `ss://${btoa(`none:${UUID}`)}@${DEFAULT_SERVER}:443?plugin=v2ray-plugin%3Bmode%3Dwebsocket%3Btls%3Bhost%3D${host}%3Bpath%3D%2F${UUID}%3Bmux%3D0#CF-${host}`;
       }
-
-      // 统一进行 Base64 编码输出
-      return new Response(
-        btoa(configContent),
-        { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
-      );
+      
+      return new Response(btoa(config), { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     }
 
-    /* ================= 4. WebSocket 代理入口 (安全鉴权) ================= */
+    // 2. WebSocket 代理逻辑
     if (req.headers.get('Upgrade') === 'websocket') {
-      
-      // 【安全校验】路径必须等于 /UUID
-      if (cleanPath !== `/${PASSWORD}`) {
-        return new Response('⛔️ Auth Failed', { status: 403 });
-      }
+      // 安全鉴权：路径必须严格匹配 UUID
+      if (cleanPath !== `/${UUID}`) return new Response(null, { status: 403 });
 
       const [client, ws] = Object.values(new WebSocketPair());
       ws.accept();
@@ -123,22 +58,17 @@ export default {
       let remote = null;
       let buffer = new Uint8Array(0);
 
-      const concat = (a, b) => {
-        const c = new Uint8Array(a.length + b.length);
-        c.set(a);
-        c.set(b, a.length);
-        return c;
-      };
-
       new ReadableStream({
         start(ctrl) {
           ws.onmessage = e => ctrl.enqueue(new Uint8Array(e.data));
-          ws.onclose = () => ctrl.close();
-          ws.onerror = () => ctrl.error();
+          ws.onclose = ws.onerror = () => ctrl.close();
         }
       }).pipeTo(new WritableStream({
         async write(chunk) {
-          buffer = concat(buffer, chunk);
+          // 合并缓冲
+          const temp = new Uint8Array(buffer.length + chunk.length);
+          temp.set(buffer); temp.set(chunk, buffer.length);
+          buffer = temp;
 
           if (remote) {
             const w = remote.writable.getWriter();
@@ -147,47 +77,57 @@ export default {
             return;
           }
 
+          // 头部数据长度检查
           if (buffer.length < 7) return;
 
-          const v = buffer;
-          let p = 1;
-          let host = '';
-
-          if (v[0] === 1) {
-            host = `${v[p++]}.${v[p++]}.${v[p++]}.${v[p++]}`;
-          } else if (v[0] === 3) {
-            const len = v[p++];
-            host = new TextDecoder().decode(v.slice(p, p + len));
-            p += len;
-          } else {
-            ws.close(); return;
-          }
-
-          const port = (v[p++] << 8) + v[p++];
-          const payload = buffer.slice(p);
-          buffer = new Uint8Array(0);
-
-          async function tryConnect(h, pt) {
-            const sock = connect({ hostname: h, port: pt });
-            await sock.opened;
-            const w = sock.writable.getWriter();
-            await w.write(payload);
-            w.releaseLock();
-            return sock;
-          }
-
+          // 解析目标地址 (不为了拦截，只为了连接)
+          let address = '', port = 0, p = 1;
+          const type = buffer[0];
+          
           try {
-            remote = await tryConnect(host, port);
-          } catch {
-            const proxy = parseProxy(PROXY_IP);
-            if (!proxy) { ws.close(); return; }
-            remote = await tryConnect(proxy.host, proxy.port);
-          }
+            if (type === 1) { // IPv4
+              address = buffer.slice(p, p + 4).join('.');
+              p += 4;
+            } else if (type === 3) { // Domain
+              const len = buffer[p++];
+              address = new TextDecoder().decode(buffer.slice(p, p + len));
+              p += len;
+            } else { ws.close(); return; } // 不支持的协议
 
-          remote.readable.pipeTo(new WritableStream({
-            write(c) { ws.send(c); },
-            close() { ws.close(); }
-          })).catch(() => {});
+            port = (buffer[p++] << 8) + buffer[p++];
+            const payload = buffer.slice(p);
+            buffer = new Uint8Array(0); // 释放内存
+
+            // 连接封装函数
+            const conn = async (h, pt) => {
+              const s = connect({ hostname: h, port: pt });
+              await s.opened;
+              const w = s.writable.getWriter();
+              await w.write(payload);
+              w.releaseLock();
+              return s;
+            };
+
+            // 核心：直连失败 -> 自动切换 ProxyIP
+            try {
+              remote = await conn(address, port);
+            } catch {
+              // 简单的 ProxyIP 解析 (支持 ip 或 ip:port)
+              const parts = PROXY_IP.split(':');
+              const pHost = parts[0];
+              const pPort = +(parts[1] || 443);
+              remote = await conn(pHost, pPort);
+            }
+
+            // 建立管道
+            remote.readable.pipeTo(new WritableStream({
+              write(c) { ws.send(c); },
+              close() { ws.close(); }
+            })).catch(() => {});
+
+          } catch (e) {
+            ws.close();
+          }
         }
       })).catch(() => {});
 
