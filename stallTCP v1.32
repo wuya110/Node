@@ -1,116 +1,85 @@
 /**
- * 使用说明（给第一次用的人看的）：
- *
- * 本脚本用于 Cloudflare Workers，
- * 提供 Shadowsocks + WebSocket (WSS)，
- *
- * 用于解决 Quantumult X 在直连可用、但访问部分站点时
- * 始终无法触发 proxyIP 回退的问题。
- *
- * 提醒：请绑定你自己的域名使用，
- * 有些网络下 workers.dev 的 443 端口会没网。
- *
- * ================= 默认已经帮你配好的参数 =================
- * （你什么都不改，也能直接用）
- *
- * 优选 IP / 域名（客户端连接用）：
- *   www.visa.cn
- *
- * 直连失败时使用的备用代理：
- *   ProxyIP.CMLiussss.net
- *
- * 默认密码 / UUID：
- *   0121c9a2-11e7-49cb-9cf6-1f2e06a3954d
- *
- * ================= 建议你自己修改的地方 =================
- *
- * 修改方法（照着点就行）：
- *
- * 1. 登录 Cloudflare 官网
- * 2. 进入 Workers & Pages
- * 3. 点进你这个 Worker
- * 4. 打开 Settings（设置）
- * 5. 找到 Variables（变量）
- * 6. 添加【纯文本变量】：
- *
- *    变量名：PASSWORD
- *    变量值：你自己的 UUID 或密码
- *
- *    变量名：SUB_PATH
- *    变量值：sub   （订阅路径，可随便改）
- *
- *    变量名：PROXY_IP
- *    变量值：你自己的 proxyIP（可选）
- *
- * 保存即可生效，不用改代码。
- *
- * 订阅地址示例：
- *   https://你的域名/sub
+ * Cloudflare Worker - Shadowsocks 服务
+ * 
+ * 功能：
+ * - 支持 QX 和小火箭订阅格式
+ * - UUID 路径鉴权，只有路径完全匹配 /UUID 才能连接
+ * - 直连失败时自动回退到代理池中的代理 IP
+ * 
+ * 可配置环境变量：
+ * - PASSWORD: 你的 UUID (不填则使用代码内默认值)
+ * - IP: 优选代理 IP (不填则使用 www.visa.cn 或 mfa.gov.ua)
+ * - SUB_PATH: 订阅路径 (不填则默认为 sub)
+ * 
+ * 默认配置：
+ * - 优选代理 IP 默认值为 'www.visa.cn' 和 'mfa.gov.ua'。
+ * - 如果设置了环境变量 IP，将会优先使用该代理 IP。
  */
 
 import { connect } from 'cloudflare:sockets';
 
-function parseProxy(addr) {
-  if (!addr) return null;
-  const [host, port] = addr.split(':');
-  return { host, port: +(port || 443) };
-}
-
 export default {
   async fetch(req, env) {
-    const DEFAULT_UUID = '0121c9a2-11e7-49cb-9cf6-1f2e06a3954d';
-    const DEFAULT_PROXYIP = 'ProxyIP.CMLiussss.net';
-    const DEFAULT_SUBPATH = 'sub';
-    const DEFAULT_SERVER = 'www.visa.cn';
+    // ================= 配置区域 (默认值) =================
+    const DEFAULT_UUID = '0121c9a2-11e7-49cb-9cf6-1f2e06a3954d'; // 默认 UUID
+    const DEFAULT_PROXYIPS = ['www.visa.cn', 'mfa.gov.ua']; // 默认优选代理 IP（可以包含多个）
+    const DEFAULT_SUBPATH = 'sub'; // 默认订阅路径
 
-    const PASSWORD = (env.PASSWORD || DEFAULT_UUID).trim();
-    const PROXY_IP = (env.PROXY_IP || DEFAULT_PROXYIP).trim();
-    const SUB_PATH = (env.SUB_PATH || DEFAULT_SUBPATH).trim();
+    // 获取环境变量配置
+    const UUID = (env.PASSWORD || DEFAULT_UUID).trim(); // UUID 读取
+    const IP = env.IP || DEFAULT_PROXYIPS[0]; // 优选代理 IP（优先使用环境变量 IP，未设置时使用默认优选 IP）
+    const SUB_PATH = (env.SUB_PATH || DEFAULT_SUBPATH).trim(); // 订阅路径
 
     const url = new URL(req.url);
     const cleanPath = url.pathname.replace(/\/+$/, '').trim();
-    const workerHost = url.hostname;
+    const host = url.hostname;
 
+    // ================= 代理池 (备用代理) =================
+    const proxyIpAddrs = { 
+      EU: 'ProxyIP.DE.CMLiussss.net', 
+      AS: 'ProxyIP.SG.CMLiussss.net', 
+      JP: 'ProxyIP.JP.CMLiussss.net', 
+      US: 'ProxyIP.US.CMLiussss.net'
+    }; // 备用代理 IP 池
+
+    // ================= 订阅输出 =================
     if (cleanPath === `/${SUB_PATH}`) {
-      const ssBase = btoa(`none:${PASSWORD}`);
-      const ssLink =
-        `ss://${ssBase}@${DEFAULT_SERVER}:443` +
-        `?plugin=v2ray-plugin` +
-        `;mode=websocket` +
-        `;tls` +
-        `;host=${workerHost}` +
-        `;path=/` +
-        `;mux=0` +
-        `#SS-CF`;
+      const isQX = (req.headers.get('User-Agent') || '').toLowerCase().includes('quantumult');
+      let config = '';
 
-      return new Response(ssLink + '\n', {
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-      });
+      if (isQX) {
+        // QX 格式: Shadowsocks
+        config = `shadowsocks=${IP}:443,method=none,password=${UUID},obfs=wss,obfs-host=${host},obfs-uri=/${UUID},fast-open=false,udp-relay=false,tag=CF-${host}`;
+      } else {
+        // 小火箭 / V2Ray 格式: ss://
+        config = `ss://${btoa(`none:${UUID}`)}@${IP}:443?plugin=v2ray-plugin;mode=websocket;tls;host=${host};path=/${UUID};mux=0#CF-${host}`;
+      }
+
+      return new Response(btoa(config), { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     }
 
+    // ================= WebSocket 连接处理 =================
     if (req.headers.get('Upgrade') === 'websocket') {
+      // 安全鉴权：路径必须严格匹配 UUID
+      if (cleanPath !== `/${UUID}`) return new Response(null, { status: 403 });
+
       const [client, ws] = Object.values(new WebSocketPair());
       ws.accept();
-
+      
       let remote = null;
       let buffer = new Uint8Array(0);
-
-      const concat = (a, b) => {
-        const c = new Uint8Array(a.length + b.length);
-        c.set(a);
-        c.set(b, a.length);
-        return c;
-      };
 
       new ReadableStream({
         start(ctrl) {
           ws.onmessage = e => ctrl.enqueue(new Uint8Array(e.data));
-          ws.onclose = () => ctrl.close();
-          ws.onerror = () => ctrl.error();
+          ws.onclose = ws.onerror = () => ctrl.close();
         }
       }).pipeTo(new WritableStream({
         async write(chunk) {
-          buffer = concat(buffer, chunk);
+          // 合并缓冲区
+          const temp = new Uint8Array(buffer.length + chunk.length);
+          temp.set(buffer); temp.set(chunk, buffer.length);
+          buffer = temp;
 
           if (remote) {
             const w = remote.writable.getWriter();
@@ -119,49 +88,55 @@ export default {
             return;
           }
 
+          // 解析目标地址和端口
           if (buffer.length < 7) return;
 
-          const v = buffer;
-          let p = 1;
-          let host = '';
-
-          if (v[0] === 1) {
-            host = `${v[p++]}.${v[p++]}.${v[p++]}.${v[p++]}`;
-          } else if (v[0] === 3) {
-            const len = v[p++];
-            host = new TextDecoder().decode(v.slice(p, p + len));
-            p += len;
-          } else {
-            return;
-          }
-
-          const port = (v[p++] << 8) + v[p++];
-          const payload = buffer.slice(p);
-          buffer = new Uint8Array(0);
-
-          async function tryConnect(h, pt) {
-            const sock = connect({ hostname: h, port: pt });
-            await sock.opened;
-            const w = sock.writable.getWriter();
-            await w.write(payload);
-            w.releaseLock();
-            return sock;
-          }
+          let address = '', port = 0, p = 1;
+          const type = buffer[0];
 
           try {
-            remote = await tryConnect(host, port);
-          } catch {
-            const proxy = parseProxy(PROXY_IP);
-            if (!proxy) return;
-            remote = await tryConnect(proxy.host, proxy.port);
-          }
+            if (type === 1) { // IPv4
+              address = buffer.slice(p, p + 4).join('.');
+              p += 4;
+            } else if (type === 3) { // Domain
+              const len = buffer[p++];
+              address = new TextDecoder().decode(buffer.slice(p, p + len));
+              p += len;
+            } else { ws.close(); return; } // 不支持的协议
 
-          remote.readable.pipeTo(new WritableStream({
-            write(c) { ws.send(c); },
-            close() { ws.close(); }
-          })).catch(() => {});
+            port = (buffer[p++] << 8) + buffer[p++];
+            const payload = buffer.slice(p);
+            buffer = new Uint8Array(0); // 释放内存
+
+            // 尝试直连目标，失败则回退到代理池
+            const conn = async (h, pt) => {
+              const s = connect({ hostname: h, port: pt });
+              await s.opened;
+              const w = s.writable.getWriter();
+              await w.write(payload);
+              w.releaseLock();
+              return s;
+            };
+
+            try {
+              remote = await conn(address, port); // 尝试直连
+            } catch {
+              // 使用代理池回退
+              const proxyHost = Object.values(proxyIpAddrs)[Math.floor(Math.random() * Object.keys(proxyIpAddrs).length)];
+              remote = await conn(proxyHost, 443); // 默认端口 443
+            }
+
+            // 连接成功后建立管道
+            remote.readable.pipeTo(new WritableStream({
+              write(c) { ws.send(c); },
+              close() { ws.close(); }
+            })).catch(() => {});
+
+          } catch (e) {
+            ws.close(); // 发生错误时关闭连接
+          }
         }
-      }));
+      })).catch(() => {});
 
       return new Response(null, { status: 101, webSocket: client });
     }
