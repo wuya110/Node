@@ -1,51 +1,48 @@
 /**
- * 使用说明（给第一次用的人看的）：
+ * * 本脚本用于 Cloudflare Workers，
+ * * 提供 Shadowsocks + WebSocket (WSS)，
+ * * 用于解决 Quantumult X 在直连可用、但访问部分站点时
+ * * 始终无法触发 proxyIP 回退的问题，
+ * * Quantumult X / Shadowrocket 均可使用。
  *
- * 本脚本用于 Cloudflare Workers，
- * 提供 Shadowsocks + WebSocket (WSS)，
+ * * 提示：请绑定自定义域名使用，
+ * * 部分网络环境下 workers.dev 的 443 端口可能无流量。
  *
- * 用于解决 Quantumult X 在直连可用、但访问部分站点时
- * 始终无法触发 proxyIP 回退的问题。
+ * * ================= 默认已经配置好的参数 =================
+ * * （不修改环境变量也可以直接使用）
  *
- * 提醒：请绑定你自己的域名使用，
- * 有些网络下 workers.dev 的 443 端口会没网。
+ * * 优选 IP / 域名（客户端连接用）：
+ * *   www.visa.cn
  *
- * ================= 默认已经帮你配好的参数 =================
- * （你什么都不改，也能直接用）
+ * * 直连失败时使用的备用代理：
+ * *   ProxyIP.CMLiussss.net
  *
- * 优选 IP / 域名（客户端连接用）：
- *   www.visa.cn
+ * * 默认密码 / UUID：
+ * *   0121c9a2-11e7-49cb-9cf6-1f2e06a3954d
  *
- * 直连失败时使用的备用代理：
- *   ProxyIP.CMLiussss.net
+ * * ================= 建议用户自行修改的地方 =================
  *
- * 默认密码 / UUID：
- *   0121c9a2-11e7-49cb-9cf6-1f2e06a3954d
- *
- * ================= 建议你自己修改的地方 =================
- *
- * 修改方法（照着点就行）：
- *
- * 1. 登录 Cloudflare 官网
- * 2. 进入 Workers & Pages
- * 3. 点进你这个 Worker
- * 4. 打开 Settings（设置）
- * 5. 找到 Variables（变量）
- * 6. 添加【纯文本变量】：
- *
- *    变量名：PASSWORD
- *    变量值：你自己的 UUID 或密码
- *
- *    变量名：SUB_PATH
- *    变量值：sub   （订阅路径，可随便改）
- *
- *    变量名：PROXY_IP
- *    变量值：你自己的 proxyIP（可选）
- *
- * 保存即可生效，不用改代码。
- *
- * 订阅地址示例：
- *   https://你的域名/sub
+ * * 修改方法（中文步骤）：
+ * * 1. 登录 Cloudflare 官网
+ * * 2. 进入 Workers & Pages
+ * * 3. 点击当前 Worker
+ * * 4. 打开 Settings（设置）
+ * * 5. 找到 Variables（变量）
+ * * 6. 添加【纯文本变量】：
+ * *
+ * *    变量名：PASSWORD
+ * *    变量值：你自己的 UUID 或密码
+ * *
+ * *    变量名：SUB_PATH
+ * *    变量值：sub（订阅路径，可自行修改）
+ * *
+ * *    变量名：PROXY_IP
+ * *    变量值：你自己的 proxyIP（可选）
+ * *
+ * * 保存后立即生效，无需改代码。
+ * *
+ * * 订阅地址示例：
+ * * https://你的域名/sub
  */
 
 import { connect } from 'cloudflare:sockets';
@@ -71,6 +68,7 @@ export default {
     const cleanPath = url.pathname.replace(/\/+$/, '').trim();
     const workerHost = url.hostname;
 
+    /* ===== 订阅输出（单一通用 SS 链接，QX / 小火箭通用） ===== */
     if (cleanPath === `/${SUB_PATH}`) {
       const ssBase = btoa(`none:${PASSWORD}`);
       const ssLink =
@@ -83,11 +81,13 @@ export default {
         `;mux=0` +
         `#SS-CF`;
 
-      return new Response(ssLink + '\n', {
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-      });
+      return new Response(
+        ssLink + '\n',
+        { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
+      );
     }
 
+    /* ===== WebSocket 代理入口（直连失败自动回落 proxyIP） ===== */
     if (req.headers.get('Upgrade') === 'websocket') {
       const [client, ws] = Object.values(new WebSocketPair());
       ws.accept();
