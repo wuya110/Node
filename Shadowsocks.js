@@ -45,6 +45,7 @@
  * * https://你的域名/sub
  */
 
+
 import { connect } from 'cloudflare:sockets';
 
 function parseProxy(addr) {
@@ -55,11 +56,13 @@ function parseProxy(addr) {
 
 export default {
   async fetch(req, env) {
+    /* ================= 1. 参数配置 ================= */
     const DEFAULT_UUID = '0121c9a2-11e7-49cb-9cf6-1f2e06a3954d';
     const DEFAULT_PROXYIP = 'ProxyIP.CMLiussss.net';
     const DEFAULT_SUBPATH = 'sub';
     const DEFAULT_SERVER = 'www.visa.cn';
 
+    /* ================= 2. 读取变量 ================= */
     const PASSWORD = (env.PASSWORD || DEFAULT_UUID).trim();
     const PROXY_IP = (env.PROXY_IP || DEFAULT_PROXYIP).trim();
     const SUB_PATH = (env.SUB_PATH || DEFAULT_SUBPATH).trim();
@@ -67,28 +70,53 @@ export default {
     const url = new URL(req.url);
     const cleanPath = url.pathname.replace(/\/+$/, '').trim();
     const workerHost = url.hostname;
+    const userAgent = (req.headers.get('User-Agent') || '').toLowerCase();
 
-    /* ===== 订阅输出（单一通用 SS 链接，QX / 小火箭通用） ===== */
+    /* ================= 3. 智能订阅输出 ================= */
     if (cleanPath === `/${SUB_PATH}`) {
-      const ssBase = btoa(`none:${PASSWORD}`);
-      const ssLink =
-        `ss://${ssBase}@${DEFAULT_SERVER}:443` +
-        `?plugin=v2ray-plugin` +
-        `;mode=websocket` +
-        `;tls` +
-        `;host=${workerHost}` +
-        `;path=/` +
-        `;mux=0` +
-        `#SS-CF`;
+      let configContent = '';
 
+      // === 分支 A：如果是 Quantumult X ===
+      if (userAgent.includes('quantumult')) {
+        // 输出 QX 能完美识别的原生格式
+        configContent = `shadowsocks=${DEFAULT_SERVER}:443, method=none, password=${PASSWORD}, obfs=wss, obfs-host=${workerHost}, obfs-uri=/${PASSWORD}, fast-open=false, udp-relay=false, tag=CF-${workerHost}`;
+      
+      } 
+      // === 分支 B：如果是 Shadowrocket 或其他客户端 ===
+      else {
+        // 输出标准的 SS 链接 (Shadowrocket 完美支持)
+        const ssBase = btoa(`none:${PASSWORD}`);
+        // 注意：这里为了兼容性，把 plugin 参数进行编码
+        const pluginParams = `obfs=wss;obfs-host=${workerHost};obfs-uri=/${PASSWORD}`;
+        const pluginStr = `v2ray-plugin?${pluginParams}`; // 小火箭习惯这种格式
+        
+        // 另一种通用写法，确保 path 参数正确
+        configContent = 
+          `ss://${ssBase}@${DEFAULT_SERVER}:443` +
+          `?plugin=v2ray-plugin` +
+          `;mode=websocket` +
+          `;tls` +
+          `;host=${workerHost}` +
+          `;path=/${PASSWORD}` + // 必须带上路径
+          `;mux=0` +
+          `#CF-${workerHost}`;
+      }
+
+      // 统一进行 Base64 编码输出
       return new Response(
-        ssLink + '\n',
+        btoa(configContent),
         { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
       );
     }
 
-    /* ===== WebSocket 代理入口（直连失败自动回落 proxyIP） ===== */
+    /* ================= 4. WebSocket 代理入口 (安全鉴权) ================= */
     if (req.headers.get('Upgrade') === 'websocket') {
+      
+      // 【安全校验】路径必须等于 /UUID
+      if (cleanPath !== `/${PASSWORD}`) {
+        return new Response('⛔️ Auth Failed', { status: 403 });
+      }
+
       const [client, ws] = Object.values(new WebSocketPair());
       ws.accept();
 
@@ -132,7 +160,7 @@ export default {
             host = new TextDecoder().decode(v.slice(p, p + len));
             p += len;
           } else {
-            return;
+            ws.close(); return;
           }
 
           const port = (v[p++] << 8) + v[p++];
@@ -152,7 +180,7 @@ export default {
             remote = await tryConnect(host, port);
           } catch {
             const proxy = parseProxy(PROXY_IP);
-            if (!proxy) return;
+            if (!proxy) { ws.close(); return; }
             remote = await tryConnect(proxy.host, proxy.port);
           }
 
@@ -161,7 +189,7 @@ export default {
             close() { ws.close(); }
           })).catch(() => {});
         }
-      }));
+      })).catch(() => {});
 
       return new Response(null, { status: 101, webSocket: client });
     }
