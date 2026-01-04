@@ -1,9 +1,9 @@
 /**
- * Cloudflare Worker - Shadowsocks 服务
+ * Cloudflare Worker - VLESS + WS + TLS 服务
  * 
  * 功能：
- * - 支持 QX 和小火箭订阅格式
- * - UUID 路径鉴权，只有路径完全匹配 /UUID 才能连接
+ * - 支持 v2rayN 和其他客户端的 VLESS 协议订阅格式
+ * - UUID 路径鉴权，路径必须完全匹配 /UUID 才能连接
  * - 直连失败时自动回退到代理池中的代理 IP
  * 
  * 可配置环境变量：
@@ -48,11 +48,11 @@ export default {
       let config = '';
 
       if (isQX) {
-        // QX 格式: Shadowsocks
-        config = `shadowsocks=${IP}:443,method=none,password=${UUID},obfs=wss,obfs-host=${host},obfs-uri=/${UUID},fast-open=false,udp-relay=false,tag=CF-${host}`;
+        // QX 格式: VLESS
+        config = `vless://${UUID}@${IP}:443?type=websocket&security=tls&path=/${UUID}&host=${host}&mux=0#CF-${host}`;
       } else {
-        // 小火箭 / V2Ray 格式: ss://
-        config = `ss://${btoa(`none:${UUID}`)}@${IP}:443?plugin=v2ray-plugin;mode=websocket;tls;host=${host};path=/${UUID};mux=0#CF-${host}`;
+        // 小火箭 / V2Ray 格式: vless://
+        config = `vless://${UUID}@${IP}:443?type=websocket&security=tls&path=/${UUID}&host=${host}&mux=0#CF-${host}`;
       }
 
       return new Response(btoa(config), { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
