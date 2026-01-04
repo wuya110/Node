@@ -14,6 +14,9 @@
  * 默认配置：
  * - 优选代理 IP 默认值为 'www.visa.cn' 和 'mfa.gov.ua'。
  * - 如果设置了环境变量 IP，将会优先使用该代理 IP。
+ * 
+ * 获取订阅链接：
+ * - 访问 https://你的worker域名/sub 即可获取订阅链接。
  */
 
 import { connect } from 'cloudflare:sockets';
