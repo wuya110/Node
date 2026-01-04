@@ -1,60 +1,71 @@
 /**
- * * Cloudflare Workers 极简高速版 (兼容 QX + 小火箭)
- * * * * 核心功能：
- * * 1. 智能分流：QX 自动返回 shadowscoks 原生格式，小火箭返回 ss:// 格式。
- * * 2. 安全鉴权：只有路径完全匹配 /UUID 才能连接，防止被扫。
- * * 3. 自动回退：直连失败自动走 ProxyIP。
- * *
- * * 可配置的环境变量 (Variables):
- * * - PASSWORD: 你的 UUID (不填则使用代码内默认值)
- * * - PROXY_IP: 备用代理 IP/域名 (不填则使用代码内默认值)
- * * - SUB_PATH: 订阅路径 (不填则默认为 sub)
+ * Cloudflare Worker - Shadowsocks 服务
+ * 
+ * 功能：
+ * - 支持 QX 和小火箭订阅格式
+ * - UUID 路径鉴权，只有路径完全匹配 /UUID 才能连接
+ * - 直连失败时自动回退到代理池中的代理 IP
+ * 
+ * 可配置环境变量：
+ * - PASSWORD: 你的 UUID (不填则使用代码内默认值)
+ * - IP: 优选代理 IP (不填则使用 www.visa.cn 或 mfa.gov.ua)
+ * - SUB_PATH: 订阅路径 (不填则默认为 sub)
+ * 
+ * 默认配置：
+ * - 优选代理 IP 默认值为 'www.visa.cn' 和 'mfa.gov.ua'。
+ * - 如果设置了环境变量 IP，将会优先使用该代理 IP。
  */
 
 import { connect } from 'cloudflare:sockets';
 
 export default {
   async fetch(req, env) {
-    /* ================= 配置区域 (默认值) ================= */
-    // 如果环境变量里没填，就会用这里的值
-    const DEFAULT_UUID = '0121c9a2-11e7-49cb-9cf6-1f2e06a3954d';
-    const DEFAULT_PROXYIP = 'ProxyIP.CMLiussss.net';
-    const DEFAULT_SUBPATH = 'sub';
-    const DEFAULT_SERVER = 'www.visa.cn'; // 优选域名/IP
+    // ================= 配置区域 (默认值) =================
+    const DEFAULT_UUID = '0121c9a2-11e7-49cb-9cf6-1f2e06a3954d'; // 默认 UUID
+    const DEFAULT_PROXYIPS = ['www.visa.cn', 'mfa.gov.ua']; // 默认优选代理 IP（可以包含多个）
+    const DEFAULT_SUBPATH = 'sub'; // 默认订阅路径
 
-    /* ================= 逻辑处理 ================= */
-    const UUID = (env.PASSWORD || DEFAULT_UUID).trim();
-    const PROXY_IP = (env.PROXY_IP || DEFAULT_PROXYIP).trim();
-    const SUB_PATH = (env.SUB_PATH || DEFAULT_SUBPATH).trim();
+    // 获取环境变量配置
+    const UUID = (env.PASSWORD || DEFAULT_UUID).trim(); // UUID 读取
+    const IP = env.IP || DEFAULT_PROXYIPS[0]; // 优选代理 IP（优先使用环境变量 IP，未设置时使用默认优选 IP）
+    const SUB_PATH = (env.SUB_PATH || DEFAULT_SUBPATH).trim(); // 订阅路径
 
     const url = new URL(req.url);
     const cleanPath = url.pathname.replace(/\/+$/, '').trim();
     const host = url.hostname;
 
-    // 1. 订阅输出 (智能识别客户端)
+    // ================= 代理池 (备用代理) =================
+    const proxyIpAddrs = { 
+      EU: 'ProxyIP.DE.CMLiussss.net', 
+      AS: 'ProxyIP.SG.CMLiussss.net', 
+      JP: 'ProxyIP.JP.CMLiussss.net', 
+      US: 'ProxyIP.US.CMLiussss.net'
+    }; // 备用代理 IP 池
+
+    // ================= 订阅输出 =================
     if (cleanPath === `/${SUB_PATH}`) {
       const isQX = (req.headers.get('User-Agent') || '').toLowerCase().includes('quantumult');
       let config = '';
 
       if (isQX) {
-        // QX 专用原生格式 (解决 obfs 路径识别问题)
-        config = `shadowsocks=${DEFAULT_SERVER}:443,method=none,password=${UUID},obfs=wss,obfs-host=${host},obfs-uri=/${UUID},fast-open=false,udp-relay=false,tag=CF-${host}`;
+        // QX 格式: Shadowsocks
+        config = `shadowsocks=${IP}:443,method=none,password=${UUID},obfs=wss,obfs-host=${host},obfs-uri=/${UUID},fast-open=false,udp-relay=false,tag=CF-${host}`;
       } else {
-        // 小火箭/V2Ray 标准格式
-        config = `ss://${btoa(`none:${UUID}`)}@${DEFAULT_SERVER}:443?plugin=v2ray-plugin%3Bmode%3Dwebsocket%3Btls%3Bhost%3D${host}%3Bpath%3D%2F${UUID}%3Bmux%3D0#CF-${host}`;
+        // 小火箭 / V2Ray 格式: ss://
+        config = `ss://${btoa(`none:${UUID}`)}@${IP}:443?plugin=v2ray-plugin;mode=websocket;tls;host=${host};path=/${UUID};mux=0#CF-${host}`;
       }
-      
+
       return new Response(btoa(config), { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     }
 
-    // 2. WebSocket 代理逻辑
+    // ================= WebSocket 连接处理 =================
     if (req.headers.get('Upgrade') === 'websocket') {
       // 安全鉴权：路径必须严格匹配 UUID
       if (cleanPath !== `/${UUID}`) return new Response(null, { status: 403 });
 
       const [client, ws] = Object.values(new WebSocketPair());
       ws.accept();
-
+      
       let remote = null;
       let buffer = new Uint8Array(0);
 
@@ -65,7 +76,7 @@ export default {
         }
       }).pipeTo(new WritableStream({
         async write(chunk) {
-          // 合并缓冲
+          // 合并缓冲区
           const temp = new Uint8Array(buffer.length + chunk.length);
           temp.set(buffer); temp.set(chunk, buffer.length);
           buffer = temp;
@@ -77,13 +88,12 @@ export default {
             return;
           }
 
-          // 头部数据长度检查
+          // 解析目标地址和端口
           if (buffer.length < 7) return;
 
-          // 解析目标地址 (不为了拦截，只为了连接)
           let address = '', port = 0, p = 1;
           const type = buffer[0];
-          
+
           try {
             if (type === 1) { // IPv4
               address = buffer.slice(p, p + 4).join('.');
@@ -98,7 +108,7 @@ export default {
             const payload = buffer.slice(p);
             buffer = new Uint8Array(0); // 释放内存
 
-            // 连接封装函数
+            // 尝试直连目标，失败则回退到代理池
             const conn = async (h, pt) => {
               const s = connect({ hostname: h, port: pt });
               await s.opened;
@@ -108,25 +118,22 @@ export default {
               return s;
             };
 
-            // 核心：直连失败 -> 自动切换 ProxyIP
             try {
-              remote = await conn(address, port);
+              remote = await conn(address, port); // 尝试直连
             } catch {
-              // 简单的 ProxyIP 解析 (支持 ip 或 ip:port)
-              const parts = PROXY_IP.split(':');
-              const pHost = parts[0];
-              const pPort = +(parts[1] || 443);
-              remote = await conn(pHost, pPort);
+              // 使用代理池回退
+              const proxyHost = Object.values(proxyIpAddrs)[Math.floor(Math.random() * Object.keys(proxyIpAddrs).length)];
+              remote = await conn(proxyHost, 443); // 默认端口 443
             }
 
-            // 建立管道
+            // 连接成功后建立管道
             remote.readable.pipeTo(new WritableStream({
               write(c) { ws.send(c); },
               close() { ws.close(); }
             })).catch(() => {});
 
           } catch (e) {
-            ws.close();
+            ws.close(); // 发生错误时关闭连接
           }
         }
       })).catch(() => {});
