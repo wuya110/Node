@@ -1,10 +1,11 @@
 /**
- * Cloudflare Worker - Shadowsocks 服务 (支持多优选IP版)
+ * Cloudflare Worker - Shadowsocks 服务 (支持多优选IP版 + DoH防泄露)
  * * 功能：
  * - 支持 QX 和小火箭订阅格式
  * - UUID 路径鉴权
  * - 直连失败时，随机从 PROXYIP 列表中选择一个进行回退
- * * 可配置环境变量 (Cloudflare 后台设置):
+ * - [新增] UDP 53 端口流量拦截，走 DoH (1.1.1.1) 防止 DNS 泄露
+ * * * 可配置环境变量 (Cloudflare 后台设置):
  * - PASSWORD: 你的 UUID
  * - IP: 订阅链接中显示的伪装 IP (客户端入口)
  * - PROXYIP: 备用代理 IP 列表，使用英文逗号分隔 (Worker 出口)
@@ -88,8 +89,39 @@ export default {
             else { ws.close(); return; }
 
             port = (buffer[p++] << 8) + buffer[p++];
+
+            // [新增] 保存头部数据，用于UDP DNS回包
+            const header = buffer.slice(0, p);
+            
             const payload = buffer.slice(p);
             buffer = new Uint8Array(0);
+
+            // ================= [新增] DNS 拦截逻辑 (DoH) =================
+            // 如果目标端口是 53，则拦截并走 DoH
+            if (port === 53) {
+                try {
+                    const resp = await fetch('https://1.1.1.1/dns-query', {
+                        method: 'POST',
+                        headers: {
+                            'content-type': 'application/dns-message'
+                        },
+                        body: payload
+                    });
+
+                    if (ws.readyState === 1) {
+                        const result = new Uint8Array(await resp.arrayBuffer());
+                        // 构造回包：[原Shadowsocks头部] + [DNS查询结果]
+                        const wrap = new Uint8Array(header.length + result.length);
+                        wrap.set(header);
+                        wrap.set(result, header.length);
+                        ws.send(wrap);
+                    }
+                } catch (e) {
+                    // console.log('DoH Error:', e);
+                }
+                return; // 拦截结束，不建立 TCP 连接
+            }
+            // ================= [结束] DNS 拦截逻辑 =================
 
             // 连接函数
             const tryConnect = async (h, pt) => {
