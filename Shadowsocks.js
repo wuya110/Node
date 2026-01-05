@@ -19,7 +19,7 @@
 import { connect } from 'cloudflare:sockets';
 
 // ================= 移植区域：智能路由数据 =================
-// 备用代理 IP 池 (来自脚本2)
+// 备用代理 IP 池 
 const proxyIpAddrs = {
   EU: 'ProxyIP.DE.CMLiussss.net', 
   AS: 'ProxyIP.SG.CMLiussss.net', 
@@ -28,7 +28,7 @@ const proxyIpAddrs = {
   Global: 'ProxyIP.CMLiussss.net' // 兜底全局
 };
 
-// Cloudflare 数据中心代码映射 (来自脚本2)
+// Cloudflare 数据中心代码映射 
 const coloRegions = {
   JP: ['FUK', 'ICN', 'KIX', 'NRT', 'OKA'],
   EU: ['ACC', 'ADB', 'ALA', 'ALG', 'AMM', 'AMS', 'ARN', 'ATH', 'BAH', 'BCN', 'BEG', 'BGW', 'BOD', 'BRU', 'BTS', 'BUD', 'CAI',
