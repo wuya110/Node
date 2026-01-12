@@ -1,0 +1,6 @@
+socks5=58.19.23.38:1080, username=12345678, password=12345678, fast-open=false, udp-relay=false, tag=CN_Unicom_01
+socks5=58.19.23.74:1080, username=a123, password=a123, fast-open=false, udp-relay=false, tag=CN_Unicom_02
+socks5=58.19.23.64:1080, username=a123456, password=a123456, fast-open=false, udp-relay=false, tag=CN_Unicom_03
+socks5=58.19.20.72:1080, username=112233, password=112233, fast-open=false, udp-relay=false, tag=CN_Unicom_04
+socks5=58.19.23.28:1080, username=123456, password=123456, fast-open=false, udp-relay=false, tag=CN_Unicom_05
+socks5=58.23.163.203:1080, username=a123, password=a123, fast-open=false, udp-relay=false, tag=CN_Unicom_06
