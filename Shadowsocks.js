@@ -9,7 +9,7 @@
  * - PASSWORD: 你的 UUID
  * - IP: 订阅链接中显示的伪装 IP (客户端入口)
  * - PROXYIP: 备用代理 IP 列表，使用英文逗号分隔 (Worker 出口)
- * 例如: ProxyIP.CMLiussss.net, www.visa.cn, 1.2.3.4
+ * 例如: ProxyIP.CMLiussss.ne, 1.2.3.4
  * - SUB_PATH: 订阅路径
  * * 获取订阅链接：
  * - 访问 https://你的worker域名/sub 即可获取订阅链接
