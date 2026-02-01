@@ -1,0 +1,1 @@
+vless://06286977-981a-4d73-9a57-4550788eb096@142.171.48.204:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.microsoft.com&fp=chrome&pbk=Zh5niOEv-lxmZN-xfsf1ZytdYXVJAHUY1qSvaUMW8nc&sid=d8&type=tcp&headerType=none#美国
