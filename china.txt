@@ -4,3 +4,6 @@ socks5=58.19.23.64:1080, username=a123456, password=a123456, fast-open=false, ud
 socks5=58.19.20.72:1080, username=112233, password=112233, fast-open=false, udp-relay=false, tag=CN_Unicom_04
 socks5=58.19.23.28:1080, username=123456, password=123456, fast-open=false, udp-relay=false, tag=CN_Unicom_05
 socks5=58.23.163.203:1080, username=a123, password=a123, fast-open=false, udp-relay=false, tag=CN_Unicom_06
+
+
+vless://06286977-981a-4d73-9a57-4550788eb096@142.171.48.204:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.microsoft.com&fp=chrome&pbk=Zh5niOEv-lxmZN-xfsf1ZytdYXVJAHUY1qSvaUMW8nc&sid=d8&type=tcp&headerType=none#美国
