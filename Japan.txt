@@ -1,3 +1,5 @@
+vless=proxies.zone.id:37569, method=none, password=ffa44972-41ca-40b9-85e8-f5035e8d5b4d, obfs=over-tls, obfs-host=dash.cloudflare.com, tls-verification=false, reality-base64-pubkey=wRs51KNQyLWR-pW9yomg3AitCc5hcf_gaaoxRv_mPH4, vless-flow=xtls-rprx-vision, fast-open=false, udp-relay=false, tag=你就拿去用吧-200M带宽-500G流量
+
 vless=156.231.141.37:2054, method=none, password=34d2d5cd-5d6b-4926-aa13-774485dc7906, obfs=wss, obfs-host=us.506705.xyz, obfs-uri=/?mode=auto&direct&s5=admin:os0EsoEH7f@tcp.ap-northeast-1.clawcloudrun.com:47475, tls-verification=true, fast-open=false, udp-relay=false, tag=日本1
 
 vless=156.231.141.37:2050, method=none, password=34d2d5cd-5d6b-4926-aa13-774485dc7906, obfs=wss, obfs-host=us.506705.xyz, obfs-uri=/?mode=auto&direct&s5=admin:os0EsoEH7f@tcp.ap-northeast-1.clawcloudrun.com:47475, tls-verification=true, fast-open=false, udp-relay=false, tag=日本2
