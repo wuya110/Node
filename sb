@@ -1,0 +1,339 @@
+#!/bin/bash
+
+# =========================================================
+# Sing-box 完美双核版 (Reality + Hysteria2)
+# 特性：官方内核 | ACME正规证书 | 端口跳跃 | 智能清理 | 快捷命令
+# =========================================================
+
+# 颜色定义
+RED="\033[31m"
+GREEN="\033[32m"
+YELLOW="\033[33m"
+BLUE="\033[36m"
+PLAIN="\033[0m"
+
+# 核心配置
+SB_CONFIG="/etc/sing-box/config.json"
+SB_BIN="/usr/local/bin/sing-box"
+CERT_DIR="/root/cert"
+DOMAIN_FILE="/etc/sing-box/domain.txt"
+SCRIPT_PATH=$(readlink -f "$0")
+
+# 检查 Root 权限
+[[ $EUID -ne 0 ]] && echo -e "${RED}错误：${PLAIN} 必须使用 root 用户运行此脚本！\n" && exit 1
+
+# -----------------------------------------------------------------------------
+# 基础功能函数
+# -----------------------------------------------------------------------------
+
+# 1. 注册快捷命令 sb
+install_shortcut() {
+    cp "$SCRIPT_PATH" /usr/local/bin/sb
+    chmod +x /usr/local/bin/sb
+    echo -e "${GREEN}快捷命令 'sb' 已安装！以后输入 sb 即可管理脚本。${PLAIN}"
+}
+
+# 2. 系统垃圾清理
+system_cleanup() {
+    echo -e "${BLUE}正在执行系统清理...${PLAIN}"
+    
+    # 清理包管理器缓存
+    if [ -f /etc/debian_version ]; then
+        apt-get autoremove -y >/dev/null 2>&1
+        apt-get clean >/dev/null 2>&1
+    elif [ -f /etc/redhat-release ]; then
+        yum autoremove -y >/dev/null 2>&1
+        yum clean all >/dev/null 2>&1
+    fi
+
+    # 清理临时文件
+    rm -rf /tmp/*
+    rm -rf /var/log/*.gz
+    rm -rf /root/.npm
+    rm -rf /root/.cache
+    
+    # 清理 Sing-box 安装包缓存
+    rm -f /tmp/sing-box.tar.gz
+    
+    echo -e "${GREEN}系统垃圾清理完成！VPS 更轻快了。${PLAIN}"
+}
+
+# 3. 安装依赖
+install_dependencies() {
+    echo -e "${BLUE}正在安装必要依赖...${PLAIN}"
+    if [ -f /etc/debian_version ]; then
+        apt update -y && apt install -y curl wget tar socat jq openssl cron iptables iptables-persistent
+    elif [ -f /etc/redhat-release ]; then
+        yum install -y curl wget tar socat jq openssl cronie iptables iptables-services
+    else
+        echo -e "${RED}系统不支持，仅支持 Debian/Ubuntu/CentOS${PLAIN}"
+        exit 1
+    fi
+    mkdir -p /etc/sing-box
+}
+
+# 4. 安装/更新官方内核
+install_core() {
+    echo -e "${BLUE}正在检查 Sing-box 官方最新版本...${PLAIN}"
+    LATEST_VER=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep 'tag_name' | cut -d\" -f4 | sed 's/v//')
+    if [[ -z "$LATEST_VER" ]]; then
+        echo -e "${RED}获取版本失败，请检查网络连接${PLAIN}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}检测到最新版本: v${LATEST_VER}${PLAIN}"
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64) ARCH_STR="amd64" ;;
+        aarch64) ARCH_STR="arm64" ;;
+        *) echo -e "${RED}不支持的架构: $ARCH${PLAIN}"; return 1 ;;
+    esac
+
+    DOWNLOAD_URL="https://github.com/SagerNet/sing-box/releases/download/v${LATEST_VER}/sing-box-${LATEST_VER}-linux-${ARCH_STR}.tar.gz"
+    
+    wget -O /tmp/sing-box.tar.gz "$DOWNLOAD_URL"
+    tar -zxvf /tmp/sing-box.tar.gz -C /tmp
+    mv /tmp/sing-box-${LATEST_VER}-linux-${ARCH_STR}/sing-box $SB_BIN
+    chmod +x $SB_BIN
+    rm -rf /tmp/sing-box*
+    
+    echo -e "${GREEN}Sing-box v${LATEST_VER} 安装成功！${PLAIN}"
+}
+
+# 5. 申请证书
+get_acme_cert() {
+    local domain=$1
+    echo -e "${BLUE}正在准备申请 SSL 证书...${PLAIN}"
+    
+    # 临时释放 80 端口
+    if netstat -tuln | grep -q ":80 "; then
+        systemctl stop nginx 2>/dev/null
+        systemctl stop apache2 2>/dev/null
+    fi
+
+    curl https://get.acme.sh | sh
+    ~/.acme.sh/acme.sh --upgrade --auto-upgrade
+    
+    mkdir -p $CERT_DIR
+    ~/.acme.sh/acme.sh --issue -d "$domain" --standalone --force
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}证书申请失败！请检查域名解析。${PLAIN}"
+        exit 1
+    fi
+
+    ~/.acme.sh/acme.sh --install-cert -d "$domain" \
+        --key-file       $CERT_DIR/private.key  \
+        --fullchain-file $CERT_DIR/cert.crt
+    
+    echo -e "${GREEN}证书申请成功！${PLAIN}"
+}
+
+# 6. 配置端口跳跃
+setup_port_hopping() {
+    local port=$1
+    local range_start=$2
+    local range_end=$3
+    
+    echo -e "${BLUE}配置 iptables 端口跳跃...${PLAIN}"
+    iptables -t nat -F PREROUTING
+    iptables -t nat -A PREROUTING -p udp --dport ${range_start}:${range_end} -j REDIRECT --to-ports ${port}
+    netfilter-persistent save 2>/dev/null || service iptables save 2>/dev/null
+}
+
+# 7. 生成配置
+generate_config() {
+    local domain=$1; local camou_dest=$2; local hy2_port=$3
+    local hy2_pass=$4; local obfs_pass=$5; local uuid=$6
+    local private_key=$7; local short_id=$8
+
+    cat > $SB_CONFIG <<EOF
+{
+  "log": { "level": "info", "timestamp": true },
+  "inbounds": [
+    {
+      "type": "vless",
+      "tag": "vless-reality",
+      "listen": "::",
+      "listen_port": 443,
+      "users": [{ "uuid": "$uuid", "flow": "xtls-rprx-vision" }],
+      "tls": {
+        "enabled": true,
+        "server_name": "$camou_dest",
+        "reality": {
+          "enabled": true,
+          "handshake": { "server": "$camou_dest", "server_port": 443 },
+          "private_key": "$private_key",
+          "short_id": ["$short_id"]
+        }
+      }
+    },
+    {
+      "type": "hysteria2",
+      "tag": "hy2-in",
+      "listen": "::",
+      "listen_port": $hy2_port,
+      "users": [{ "password": "$hy2_pass" }],
+      "obfs": { "type": "salamander", "password": "$obfs_pass" },
+      "tls": {
+        "enabled": true,
+        "alpn": ["h3"],
+        "certificate_path": "$CERT_DIR/cert.crt",
+        "key_path": "$CERT_DIR/private.key"
+      }
+    }
+  ],
+  "outbounds": [{ "type": "direct", "tag": "direct" }]
+}
+EOF
+}
+
+# 8. 设置开机自启服务
+setup_service() {
+    cat > /etc/systemd/system/sing-box.service <<EOF
+[Unit]
+Description=sing-box service
+Documentation=https://sing-box.sagernet.org
+After=network.target nss-lookup.target
+
+[Service]
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+ExecStart=$SB_BIN run -c $SB_CONFIG
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=infinity
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable sing-box >/dev/null 2>&1
+    systemctl restart sing-box
+    echo -e "${GREEN}开机自启服务已配置！${PLAIN}"
+}
+
+# -----------------------------------------------------------------------------
+# 交互流程
+# -----------------------------------------------------------------------------
+
+install_singbox() {
+    clear
+    echo -e "==================================================="
+    echo -e "    ${GREEN}Sing-box 完美双核安装 (Reality + Hy2)${PLAIN}"
+    echo -e "==================================================="
+    
+    install_shortcut
+    install_dependencies
+    install_core
+
+    # Hy2 域名
+    echo -e "\n${YELLOW}[Hysteria 2 设置]${PLAIN}"
+    read -p "请输入解析到本机的域名: " domain
+    [[ -z "$domain" ]] && exit 1
+    echo "$domain" > $DOMAIN_FILE
+    get_acme_cert "$domain"
+
+    # Hy2 端口与跳跃
+    read -p "设置 Hy2 主端口 (默认 50000): " hy2_port
+    [[ -z "$hy2_port" ]] && hy2_port=50000
+    read -p "设置端口跳跃范围 (如 50000-50050，留空跳过): " port_range
+    [[ -n "$port_range" ]] && setup_port_hopping $hy2_port ${port_range%-*} ${port_range#*-}
+
+    # 密码 (使用 hex 避免特殊字符)
+    hy2_pass=$(openssl rand -hex 8)
+    obfs_pass=$(openssl rand -hex 8)
+
+    # Reality 设置
+    echo -e "\n${YELLOW}[VLESS-Reality 设置]${PLAIN}"
+    echo "1. www.microsoft.com (推荐)"
+    echo "2. www.amazon.com"
+    echo "3. www.tesla.com"
+    echo "4. gateway.icloud.com"
+    read -p "选择伪装 [1-4] (默认1): " dest_idx
+    case $dest_idx in
+        2) dest="www.amazon.com" ;;
+        3) dest="www.tesla.com" ;;
+        4) dest="gateway.icloud.com" ;;
+        *) dest="www.microsoft.com" ;;
+    esac
+
+    # 生成密钥
+    kp=$($SB_BIN generate reality-keypair)
+    pk=$(echo "$kp" | grep "PrivateKey" | cut -d: -f2 | tr -d ' "')
+    pub=$(echo "$kp" | grep "PublicKey" | cut -d: -f2 | tr -d ' "')
+    sid=$($SB_BIN generate rand --hex 8)
+    uuid=$($SB_BIN generate uuid)
+
+    # 启动
+    generate_config "$domain" "$dest" "$hy2_port" "$hy2_pass" "$obfs_pass" "$uuid" "$pk" "$sid"
+    setup_service
+    
+    # 保存信息
+    cat > /etc/sing-box/info.txt <<EOF
+DOMAIN=$domain
+UUID=$uuid
+PUBLIC_KEY=$pub
+SHORT_ID=$sid
+CAMOU_DEST=$dest
+HY2_PORT=$hy2_port
+HY2_PASS=$hy2_pass
+OBFS_PASS=$obfs_pass
+PORT_RANGE=$port_range
+EOF
+
+    system_cleanup
+    echo -e "${GREEN}安装完成！${PLAIN}"
+    show_info
+}
+
+show_info() {
+    [[ ! -f /etc/sing-box/info.txt ]] && echo "请先安装" && return
+    source /etc/sing-box/info.txt
+    ip=$(curl -s4 icanhazip.com)
+
+    vless="vless://${UUID}@${ip}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${CAMOU_DEST}&fp=chrome&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp&headerType=none#VLESS-Reality"
+    hy2="hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT}?sni=${DOMAIN}&alpn=h3&obfs=salamander&obfs-password=${OBFS_PASS}&insecure=0#Hy2-Link"
+
+    echo -e "\n${BLUE}🚀 VLESS-Reality${PLAIN}"
+    echo -e "地址: ${ip}:443"
+    echo -e "伪装: ${CAMOU_DEST}"
+    echo -e "链接: ${vless}"
+
+    echo -e "\n${BLUE}🚀 Hysteria 2${PLAIN}"
+    echo -e "域名: ${DOMAIN}"
+    echo -e "端口: ${HY2_PORT} (跳跃: ${PORT_RANGE})"
+    echo -e "密码: ${HY2_PASS}"
+    echo -e "混淆: ${OBFS_PASS}"
+    echo -e "链接: ${hy2}"
+}
+
+# 菜单
+show_menu() {
+    clear
+    echo -e "=================================="
+    echo -e "   Sing-box 管理脚本 (命令: sb)"
+    echo -e "=================================="
+    echo -e " 1. 安装/重装 (完美双协议)"
+    echo -e " 2. 查看节点链接"
+    echo -e " 3. 查看日志"
+    echo -e " 4. 修改配置 (伪装/端口)"
+    echo -e " 5. 更新内核"
+    echo -e " 6. 系统垃圾清理"
+    echo -e " 7. 卸载"
+    echo -e " 0. 退出"
+    read -p " 选项: " num
+    case "$num" in
+        1) install_singbox ;;
+        2) show_info ;;
+        3) journalctl -u sing-box -f -n 20 ;;
+        4) echo "功能开发中..." ;; 
+        5) install_core && systemctl restart sing-box ;;
+        6) system_cleanup ;;
+        7) systemctl stop sing-box; rm -rf /etc/sing-box /usr/local/bin/sing-box /usr/local/bin/sb; echo "卸载完成" ;;
+        0) exit 0 ;;
+        *) echo "错误选项" ;;
+    esac
+}
+
+show_menu
