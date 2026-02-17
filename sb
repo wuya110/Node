@@ -1,8 +1,7 @@
-cat > /usr/local/bin/sb << 'EOF'
 #!/bin/bash
 
 # =========================================================
-# Sing-box 完美双核版 (Reality + Hy2) - 完整功能版
+# Sing-box 完美双核版 (Reality + Hy2) - 最终版
 # =========================================================
 
 # 颜色定义
@@ -30,6 +29,24 @@ install_dependencies() {
         yum install -y curl wget tar socat jq openssl cronie iptables iptables-services
     fi
     mkdir -p /etc/sing-box
+    systemctl enable cron >/dev/null 2>&1
+    systemctl start cron >/dev/null 2>&1
+}
+
+system_cleanup() {
+    # 适合后台运行的静默清理
+    if [ -f /etc/debian_version ]; then
+        apt-get autoremove -y >/dev/null 2>&1
+        apt-get clean >/dev/null 2>&1
+    elif [ -f /etc/redhat-release ]; then
+        yum autoremove -y >/dev/null 2>&1
+        yum clean all >/dev/null 2>&1
+    fi
+    rm -rf /tmp/*
+    rm -rf /var/log/*.gz
+    rm -rf /root/.npm
+    rm -rf /root/.cache
+    rm -f /tmp/sb.tar.gz
 }
 
 install_core() {
@@ -187,7 +204,11 @@ HY2_PASS=$hy2_pass
 OBFS_PASS=$obfs_pass
 PORT_RANGE=$port_range
 EOF
-    echo -e "${GREEN}安装完成！${PLAIN}"
+    
+    # 自动添加每天凌晨3点清理任务
+    (crontab -l 2>/dev/null | grep -v "sb cleanup"; echo "0 3 * * * /usr/local/bin/sb cleanup") | crontab -
+    
+    echo -e "${GREEN}安装完成！已添加每日自动清理任务。${PLAIN}"
     show_info
 }
 
@@ -249,6 +270,12 @@ modify_config() {
 }
 
 show_menu() {
+    # 增加 cleanup 参数用于后台静默执行
+    if [[ "$1" == "cleanup" ]]; then
+        system_cleanup
+        exit 0
+    fi
+
     clear
     echo -e "=================================="
     echo -e "   Sing-box 管理脚本 (命令: sb)"
@@ -268,13 +295,10 @@ show_menu() {
         3) journalctl -u sing-box -f -n 20 ;;
         4) modify_config ;; 
         5) install_core && systemctl restart sing-box ;;
-        6) apt autoremove -y; rm -rf /tmp/*; echo "清理完成" ;;
+        6) system_cleanup; echo "清理完成" ;;
         7) systemctl stop sing-box; rm -rf /etc/sing-box /usr/local/bin/sing-box /usr/local/bin/sb; echo "卸载完成" ;;
         0) exit 0 ;;
         *) echo "错误选项" ;;
     esac
 }
-show_menu
-EOF
-chmod +x /usr/local/bin/sb
-sb
+show_menu "$1"
