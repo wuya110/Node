@@ -21,4 +21,5 @@
 使用 Root 用户在终端执行以下命令即可：
 
 ```bash
-bash <(curl -Ls [https://raw.githubusercontent.com/wuya110/Node/refs/heads/main/sb](https://raw.githubusercontent.com/wuya110/Node/refs/heads/main/sb))
+curl -o /usr/local/bin/sb -Ls https://raw.githubusercontent.com/wuya110/Node/main/sb && chmod +x /usr/local/bin/sb && sb
+
