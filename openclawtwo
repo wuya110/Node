@@ -1,0 +1,250 @@
+==============================
+OpenClaw 稳定运行防崩指南
+==============================
+
+一、原则（记住这三条）
+
+1）不要频繁运行：
+openclaw onboard
+
+作用：
+= 重建配置
+= 覆盖模型
+= 覆盖provider
+= 覆盖channel
+
+如果系统已经稳定：
+不要再运行它
+
+
+2）不要同时用三种地方改配置
+
+配置来源优先级：
+
+onboard > service > json > WebUI
+
+生产环境只用：
+~/.openclaw/openclaw.json
+
+
+3）稳定后锁配置
+
+chattr +i ~/.openclaw/openclaw.json
+
+否则：
+重启 / 更新 / 向导 都可能覆盖
+
+
+------------------------------
+二、模型配置流程（标准流程）
+------------------------------
+
+1）解锁
+
+chattr -i ~/.openclaw/openclaw.json
+
+
+2）修改
+
+nano ~/.openclaw/openclaw.json
+
+
+示例 DeepSeek：
+
+{
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "deepseek": {
+        "baseUrl": "https://api.deepseek.com/v1",
+        "apiKey": "sk-xxxx",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "deepseek-chat",
+            "contextWindow": 128000,
+            "maxTokens": 8000
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "deepseek/deepseek-chat"
+      }
+    }
+  }
+}
+
+
+3）重启
+
+openclaw gateway restart
+
+
+4）确认
+
+openclaw models list
+
+
+5）重新锁
+
+chattr +i ~/.openclaw/openclaw.json
+
+
+------------------------------
+三、常见错误与解决
+------------------------------
+
+错误：
+Model context window too small (4096)
+
+原因：
+provider 默认 ctx=4096
+
+解决：
+修改 json：
+
+"contextWindow": 128000
+
+
+错误：
+Telegram 有回复但模型不对
+
+原因：
+default model 没改
+
+检查：
+
+openclaw status
+
+看：
+
+Sessions -> Model
+
+
+错误：
+配置改完又变回去
+
+原因：
+1）运行了 onboard
+2）文件没锁
+3）WebUI改过
+
+
+------------------------------
+四、生产环境禁用行为
+------------------------------
+
+不要做：
+
+openclaw onboard
+openclaw config reset
+WebUI 修改模型
+重复安装插件
+删除 ~/.openclaw
+
+
+------------------------------
+五、日志排错
+------------------------------
+
+实时日志：
+
+openclaw logs --follow
+
+
+网关状态：
+
+openclaw gateway status
+
+
+模型列表：
+
+openclaw models list
+
+
+完整状态：
+
+openclaw status
+
+
+------------------------------
+六、WebUI使用规则
+------------------------------
+
+WebUI只用于：
+
+查看状态
+简单测试
+
+不要用于：
+
+添加 provider
+修改模型
+改默认模型
+
+真正配置只改 json
+
+
+------------------------------
+七、升级策略
+------------------------------
+
+升级后第一件事：
+
+openclaw models list
+
+
+如果模型消失：
+
+解锁：
+chattr -i ~/.openclaw/openclaw.json
+
+检查配置
+
+再锁：
+chattr +i ~/.openclaw/openclaw.json
+
+
+------------------------------
+八、稳定运行状态判断
+------------------------------
+
+满足以下条件：
+
+openclaw status 正常
+Telegram OK
+models list ctx >= 128k
+json 已锁 (lsattr 显示 i)
+
+
+------------------------------
+九、灾难恢复
+------------------------------
+
+如果彻底乱了：
+
+1）停止服务
+
+openclaw gateway stop
+
+
+2）备份旧配置
+
+cp ~/.openclaw/openclaw.json ~/backup.json
+
+
+3）重新 onboard
+
+openclaw onboard
+
+
+4）手动恢复 provider
+
+
+==============================
+结束
+==============================
