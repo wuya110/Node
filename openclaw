@@ -1,0 +1,182 @@
+cat << 'EOF' > openclaw_master.sh
+#!/bin/bash
+
+GREEN="\033[32m"
+RED="\033[31m"
+YELLOW="\033[33m"
+CYAN="\033[36m"
+RESET="\033[0m"
+
+# 1. 系统大屏看板
+function show_dashboard() {
+    clear
+    echo -e "${CYAN}===================================================${RESET}"
+    echo -e "${CYAN}             系统状态与 AI 阵容大屏                ${RESET}"
+    echo -e "${CYAN}===================================================${RESET}"
+    
+    echo -e "\n${YELLOW}▶ 当前已加载的提供商 (Providers) 列表：${RESET}"
+    openclaw models | grep -E "^\- |Configured" || echo "暂无数据或网关未启动"
+    
+    echo -e "\n${YELLOW}▶ 当前正在服役的主力模型与网关状态：${RESET}"
+    openclaw status | grep -E "Gateway|Agents|Sessions|model" || echo "状态获取失败"
+    
+    echo -e "\n${GREEN}===================================================${RESET}"
+    read -p "看完啦！按回车键返回主菜单..."
+}
+
+# 2. 中转专线配置向导 (带撤回机制)
+function add_provider_wizard() {
+    while true; do
+        clear
+        echo -e "${CYAN}===================================================${RESET}"
+        echo -e "${CYAN}      中转专线配置向导 (带撤回防错机制)            ${RESET}"
+        echo -e "${CYAN}===================================================${RESET}"
+        echo -e "💡 提示：在任何一步输入 ${RED}q${RESET} 并回车，均可立即撤回并中断操作。\n"
+        
+        # 第一步：代号
+        echo -e "${YELLOW}[1/4] 提供商代号 (也就是这个中转站的“店名”)${RESET}"
+        read -p "请起个全英文代号 (如 tao, deepseek, myapi): " p
+        if [[ "${p,,}" == "q" || -z "$p" ]]; then echo -e "${RED}操作已撤回！${RESET}"; sleep 1; return; fi
+        echo ""
+        
+        # 第二步：Key
+        echo -e "${YELLOW}[2/4] API Key${RESET}"
+        read -p "请输入商家的 API Key (sk-...): " k
+        if [[ "${k,,}" == "q" || -z "$k" ]]; then echo -e "${RED}操作已撤回！${RESET}"; sleep 1; return; fi
+        echo ""
+        
+        # 第三步：URL
+        echo -e "${YELLOW}[3/4] 中转接口 URL${RESET}"
+        read -p "请输入请求地址 (必须含 /v1，如 https://tao.plus7.plus/v1): " u
+        if [[ "${u,,}" == "q" || -z "$u" ]]; then echo -e "${RED}操作已撤回！${RESET}"; sleep 1; return; fi
+        echo ""
+        
+        # 第四步：模型
+        echo -e "${YELLOW}[4/4] 默认模型${RESET}"
+        read -p "请输入默认使用的模型 (如 gpt-4o, gpt-5): " m
+        if [[ "${m,,}" == "q" || -z "$m" ]]; then echo -e "${RED}操作已撤回！${RESET}"; sleep 1; return; fi
+        
+        # 最终确认大屏
+        clear
+        echo -e "${GREEN}>>> 请做最后确认 (此时仍可撤回) <<<${RESET}"
+        echo -e "---------------------------------------------------"
+        echo -e " 提供商代号 : ${CYAN}$p${RESET}"
+        echo -e " API Key    : ${CYAN}$k${RESET}"
+        echo -e " 请求地址   : ${CYAN}$u${RESET}"
+        echo -e " 默认模型   : ${CYAN}$m${RESET}"
+        echo -e "---------------------------------------------------"
+        read -p "确认无误并写入系统吗？(输入 y 确认，其他任意键撤回): " confirm
+        if [[ "${confirm,,}" != "y" ]]; then 
+            echo -e "${RED}已触发撤回保护，未对系统做任何修改！${RESET}"
+            sleep 1; return
+        fi
+        
+        echo -e "\n${YELLOW}正在强行注入系统...${RESET}"
+        PAYLOAD="{\"baseUrl\":\"$u\",\"apiKey\":\"$k\",\"models\":[{\"id\":\"$m\",\"name\":\"$m\"}]}"
+        openclaw config set "models.providers.$p" --json "$PAYLOAD"
+        
+        echo -e "${YELLOW}正在将主模型切换为 $p/$m ...${RESET}"
+        openclaw config set agents.defaults.model.primary "$p/$m"
+        
+        echo -e "${GREEN}配置已安全写入！正在重启网关使配置生效...${RESET}"
+        systemctl --user restart openclaw-gateway
+        read -p "操作成功！您的新模型已上线。按回车键返回..."
+        return
+    done
+}
+
+# 3. 添加 AI 的分支菜单
+function add_ai_menu() {
+    while true; do
+        clear
+        echo -e "${CYAN}===================================================${RESET}"
+        echo -e "${CYAN}              请选择添加 AI 模型的方式             ${RESET}"
+        echo -e "${CYAN}===================================================${RESET}"
+        echo -e "${YELLOW}  1.${RESET} 使用系统官方自带向导 (适合官方默认配置)"
+        echo -e "${YELLOW}  2.${RESET} 使用自定义中转向导 (保姆级防错，适合第三方节点)"
+        echo -e ""
+        echo -e "${YELLOW}  0.${RESET} 返回上级主菜单"
+        echo -e "${CYAN}===================================================${RESET}"
+        read -p "请输入选项 (0-2): " sub_choice
+
+        case $sub_choice in
+            1) clear; echo -e "${GREEN}>>> 正在唤起官方配置向导...${RESET}"; openclaw configure; read -p "官方向导结束。按回车键返回...";;
+            2) add_provider_wizard ;;
+            0) return ;;
+            *) echo -e "${RED}无效输入！${RESET}"; sleep 1 ;;
+        esac
+    done
+}
+
+# 4. 核心环境安装 (复原功能)
+function install_core() {
+    clear
+    echo -e "${RED}>>> 警告：即将开始安装全新环境！${RESET}"
+    read -p "如果您已安装 OpenClaw，请不要执行此操作！按回车键继续，或输入 q 取消: " confirm
+    if [[ "${confirm,,}" == "q" ]]; then return; fi
+    
+    echo -e "${GREEN}>>> [1/3] 更新系统与安装基础依赖...${RESET}"
+    apt update -y && apt install -y curl wget jq
+    curl -fsSL https://deb.nodesource.com/setup_current.x | bash -
+    apt install -y nodejs
+    npm install -g npm@latest
+    npm install -g openclaw@latest
+    echo -e "${YELLOW}环境部署完成！您可以选择菜单里的 [系统急救] 启动初始配置。${RESET}"
+    read -p "按回车键返回主菜单..."
+}
+
+# 主菜单界面
+function show_menu() {
+    while true; do
+        clear
+        echo -e "${GREEN}===================================================${RESET}"
+        echo -e "${GREEN}      OpenClaw 终极控制台 (典藏修复版)             ${RESET}"
+        echo -e "${GREEN}===================================================${RESET}"
+        echo -e "${CYAN}[ 状态监控 ]${RESET}"
+        echo -e "${YELLOW}  1.${RESET} 查看当前系统大屏 (已加模型 / 当前运行模型)"
+        echo -e ""
+        echo -e "${CYAN}[ 核心模型管理 ]${RESET}"
+        echo -e "${YELLOW}  2.${RESET} 添加 / 修改 AI 模型 ${GREEN}(-> 进入双线选择)${RESET}"
+        echo -e "${RED}  3.${RESET} 删除失效的 AI 提供商 (清理跑路节点，带撤回)"
+        echo -e ""
+        echo -e "${CYAN}[ 维护与安装 ]${RESET}"
+        echo -e "${YELLOW}  4.${RESET} 调出官方模型信息板 (仅查看)"
+        echo -e "${RED}  5.${RESET} 系统急救: 修复受损的配置与环境 (Doctor Fix)"
+        echo -e "${CYAN}  9.${RESET} 【从零开始】一键安装 Node.js 与 OpenClaw 环境"
+        echo -e ""
+        echo -e "${YELLOW}  0.${RESET} 退出控制台"
+        echo -e "${GREEN}===================================================${RESET}"
+        read -p "请输入数字选择: " choice
+
+        case $choice in
+            1) show_dashboard ;;
+            2) add_ai_menu ;;
+            3) 
+                clear
+                echo -e "${RED}>>> [ 删除失效的 AI 提供商 ]${RESET}"
+                echo -e "提示：您可以从大屏里找到提供商的名字（如 tao, openai）。"
+                read -p "输入要删除的提供商代号 [按 q 退出撤回]: " dp
+                if [[ "${dp,,}" == "q" || -z "$dp" ]]; then echo -e "${RED}已撤回！${RESET}"; sleep 1; continue; fi
+                openclaw config unset "models.providers.$dp"
+                openclaw config set agents.defaults.model.primary "openai/gpt-4o"
+                echo -e "${GREEN}清理完成并恢复官方默认设置。正在重启网关...${RESET}"
+                systemctl --user restart openclaw-gateway
+                read -p "按回车继续..."
+                ;;
+            4) clear; openclaw models; read -p "按回车键返回..." ;;
+            5) 
+                openclaw doctor --fix
+                systemctl --user restart openclaw-gateway
+                echo -e "${GREEN}修复指令已执行！网关已重启。${RESET}"
+                read -p "按回车键返回主菜单..." 
+                ;;
+            9) install_core ;;
+            0) echo -e "${GREEN}已退出。随时输入 bash openclaw_master.sh 唤出菜单。${RESET}"; exit 0 ;;
+            *) echo -e "${RED}无效输入！${RESET}"; sleep 1 ;;
+        esac
+    done
+}
+
+show_menu
+EOF
+bash openclaw_master.sh
