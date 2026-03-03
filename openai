@@ -1,0 +1,48 @@
+# 🚀 CLIProxyAPI + 自动注册机：全自动隐身架构报告
+
+## 1. 核心目录与文件布局
+所有核心组件均部署在 /root 目录下，确保权限统一：
+- 工作主目录：`/root`
+- 注册机脚本：`/root/auto_reg.py` (负责薅羊毛)
+- 自动补货脚本：`/root/refill.sh` (核心调度指挥官)
+- 面板弹药库：`/root/auths/` (Token 实体文件存放地)
+- 面板主程序：`/root/cli-proxy-api` (API 转发引擎)
+- 系统日志：`/root/proxy.log` (面板日志), `/root/refill.log` (注册日志)
+
+---
+
+## 2. 流量“隐身衣”逻辑 (SOCKS5h Proxy)
+为了规避 OpenAI 对机房 IP 的封锁，整个系统强制走 Cloudflare 原生 IP 隧道：
+- 代理端口：`127.0.0.1:40000` (由本地 Cloudflare WARP 提供)
+- 协议：`socks5h` (强制远程 DNS 解析，防止机房 DNS 泄露)
+- 作用范围：
+  1. 注册机 (`auto_reg.py`) 注册账号时使用。
+  2. 面板程序 (`cli-proxy-api`) 向 OpenAI 发送请求时使用。
+
+---
+
+## 3. 全自动流水线运行流程
+
+### 第一步：定时触发 (Crontab)
+系统每 4 小时自动触发一次 `refill.sh` 脚本：
+`0 */4 * * * /bin/bash /root/refill.sh >> /root/refill.log 2>&1`
+
+### 第二步：自动生产 (refill.sh)
+1. 脚本被触发后，进入 `/root` 目录。
+2. 调用 `auto_reg.py` 挂载代理：`python3 auto_reg.py --once --proxy socks5h://127.0.0.1:40000`
+3. 注册成功后，产出一个全新的 `.json` 格式 Token 文件。
+
+### 第三步：自动入库与淘汰
+1. 脚本将新产生的 `token_*.json` 移动到 `/root/auths/` 文件夹。
+2. `cli-proxy-api` 开启了文件监控 (File Watcher)，检测到新文件后会自动热加载。
+3. 脚本执行清理：`find auths/ -name "token_*.json" -mtime +3 -exec rm {} \;` (自动删除 3 天前的旧号，保持 3 天滚动更新)。
+
+---
+
+## 4. API 服务端 (cli-proxy-api) 维持逻辑
+面板程序作为常驻进程运行，并注入了全局代理变量：
+- 监听端口：`9527` (已映射至 Cloudflare 域名入站)
+- 运行命令：
+  ```bash
+  export ALL_PROXY="socks5h://127.0.0.1:40000"
+  nohup ./cli-proxy-api --config /root/config.yaml > proxy.log 2>&1 &
