@@ -46,3 +46,26 @@
   ```bash
   export ALL_PROXY="socks5h://127.0.0.1:40000"
   nohup ./cli-proxy-api --config /root/config.yaml > proxy.log 2>&1 &
+
+
+
+# 1. 先停掉现在的定时任务
+crontab -l | sed '/refill.sh/s/^[^#]/#&/' | crontab -
+
+# 2. 把开关指令作为注释追加到脚本末尾
+cat << 'EOF' >> /root/refill.sh
+
+# ==========================================
+# 🛠️ 自动化维护指令 (手机备忘)
+# ==========================================
+# 停止定时任务 (冬眠):
+# crontab -l | sed '/refill.sh/s/^[^#]/#&/' | crontab -
+
+# 重启定时任务 (激活):
+# crontab -l | sed '/refill.sh/s/^#//' | crontab -
+# ==========================================
+EOF
+
+
+
+
