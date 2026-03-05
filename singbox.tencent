@@ -1,0 +1,43 @@
+# 切换到 root 环境并直接运行安装
+sudo su - << 'EOF'
+apt update -y && apt install -y curl wget tar jq openssl
+LATEST_VER=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep 'tag_name' | cut -d\" -f4 | sed 's/v//')
+# 使用加速镜像下载内核（防止 52KB/s 的悲剧）
+wget -O /tmp/sb.tar.gz "https://mirror.ghproxy.com/https://github.com/SagerNet/sing-box/releases/download/v${LATEST_VER}/sing-box-${LATEST_VER}-linux-amd64.tar.gz"
+tar -zxvf /tmp/sb.tar.gz -C /tmp
+mv /tmp/sing-box-*/sing-box /usr/local/bin/sing-box
+chmod +x /usr/local/bin/sing-box
+# 这里直接帮你生成配置
+mkdir -p /etc/sing-box
+uuid=$(/usr/local/bin/sing-box generate uuid)
+kp=$(/usr/local/bin/sing-box generate reality-keypair)
+pk=$(echo "$kp" | grep "PrivateKey" | cut -d: -f2 | tr -d ' "')
+pub=$(echo "$kp" | grep "PublicKey" | cut -d: -f2 | tr -d ' "')
+sid=$(/usr/local/bin/sing-box generate rand --hex 8)
+cat > /etc/sing-box/config.json <<JSON
+{
+  "log": { "level": "info" },
+  "inbounds": [{
+    "type": "vless", "listen": "::", "listen_port": 443,
+    "users": [{ "uuid": "$uuid", "flow": "xtls-rprx-vision" }],
+    "tls": { "enabled": true, "server_name": "www.microsoft.com",
+      "reality": { "enabled": true, "handshake": { "server": "www.microsoft.com", "server_port": 443 },
+        "private_key": "$pk", "short_id": ["$sid"] } }
+  }],
+  "outbounds": [{ "type": "direct" }]
+}
+JSON
+# 启动服务
+cat > /etc/systemd/system/sing-box.service <<SERVICE
+[Service]
+ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
+Restart=on-failure
+[Install]
+WantedBy=multi-user.target
+SERVICE
+systemctl daemon-reload && systemctl enable sing-box && systemctl restart sing-box
+# 输出节点链接
+ip=$(curl -s4 icanhazip.com)
+echo -e "\n\033[32m【回国节点搭建成功！】\033[0m"
+echo -e "\033[36mvless://${uuid}@${ip}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.microsoft.com&fp=chrome&pbk=${pub}&sid=${sid}&type=tcp&headerType=none#腾讯云回国节点\033[0m"
+EOF
