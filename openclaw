@@ -1,1 +1,572 @@
-openclaw gateway stop || true; pkill -f openclaw || true; rm -f ~/.openclaw/openclaw.json && echo '{"auth":{"profiles":{"newapi:default":{"provider":"openai","mode":"api_key"},"zhipu:default":{"provider":"openai","mode":"api_key"}}},"models":{"mode":"replace","providers":{"newapi":{"baseUrl":"http://0.0.0.0:3000/v1","apiKey":"sk-jdbSJ0971yV9CK17sU8h5K1ChzMLl6SzzJVT8m6pLd2bbPrr","api":"openai-completions","models":[{"id":"my-assistant","name":"Eco","contextWindow":65536},{"id":"mysuper","name":"Pro","contextWindow":65536}]},"zhipu":{"baseUrl":"https://open.bigmodel.cn/api/paas/v4","apiKey":"654be6e52e94454282ac2b4ff6a8262b.aw2K0PeJ89ltFgqG","api":"openai-completions","models":[{"id":"glm-4.7-flash","name":"GLM-4.7-Flash"},{"id":"glm-4.6v","name":"GLM-4.6v"}]}}},"agents":{"defaults":{"contextTokens":65536,"memorySearch":{"enabled":false},"sandbox":{"mode":"all","workspaceAccess":"rw"},"compaction":{"mode":"default","reserveTokens":12000,"keepRecentTokens":14000,"reserveTokensFloor":8000,"memoryFlush":{"enabled":false,"softThresholdTokens":5000}}},"list":[{"id":"main","name":"main","workspace":"/root/.openclaw/workspace","agentDir":"/root/.openclaw/agents/main/agent","model":{"primary":"newapi/my-assistant","fallbacks":[]}},{"id":"main-super","name":"super","workspace":"/root/.openclaw/workspace","agentDir":"/root/.openclaw/agents/main-super/agent","model":{"primary":"newapi/mysuper","fallbacks":[]}}]},"channels":{"telegram":{"enabled":true,"botToken":"8226030547:AAEsGN1mL68UT54cx7wIdOFA5PHK8cjm76o","streaming":"partial","groupPolicy":"allowlist","allowFrom":["5086179479"],"groups":{}}},"gateway":{"mode":"local","auth":{"mode":"token","token":"1bebc744fcedcd47d317aef2832a4472dfda82d100999b50"}},"tools":{"profile":"full","exec":{"host":"gateway","ask":"off","security":"full"},"elevated":{"enabled":true,"allowFrom":{"telegram":["5086179479"]}}}}' > ~/.openclaw/openclaw.json && chmod 600 ~/.openclaw/openclaw.json && openclaw gateway start && sleep 3 && openclaw gateway status
+{
+  "meta": {
+    "lastTouchedVersion": "2026.3.8",
+    "lastTouchedAt": "2026-03-11T19:22:53.901Z"
+  },
+  "wizard": {
+    "lastRunAt": "2026-03-11T11:49:30.252Z",
+    "lastRunVersion": "2026.3.8",
+    "lastRunCommand": "doctor",
+    "lastRunMode": "local"
+  },
+  "browser": {
+    "executablePath": "/usr/bin/google-chrome",
+    "headless": true,
+    "noSandbox": true,
+    "defaultProfile": "openclaw"
+  },
+  "auth": {
+    "profiles": {
+      "newapi:default": {
+        "provider": "openai",
+        "mode": "api_key"
+      },
+      "zhipu:default": {
+        "provider": "openai",
+        "mode": "api_key"
+      }
+    }
+  },
+  "models": {
+    "mode": "replace",
+    "providers": {
+      "zhipu": {
+        "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+        "apiKey": "REDACTED",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "glm-4.7-flash",
+            "name": "GLM-4.7-Flash",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "glm-4.6v",
+            "name": "GLM-4.6v",
+            "input": [
+              "text",
+              "image"
+            ]
+          }
+        ]
+      },
+      "CPAMC": {
+        "baseUrl": "http://208.117.84.181:9527/v1",
+        "apiKey": "REDACTED",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "gemini-2.5-flash",
+            "name": "gemini-2.5-flash",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "gemini-2.5-flash-lite",
+            "name": "gemini-2.5-flash-lite",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "gemini-2.5-pro",
+            "name": "gemini-2.5-pro",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "gemini-3-flash-preview",
+            "name": "gemini-3-flash-preview",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "gemini-3-pro-preview",
+            "name": "gemini-3-pro-preview",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "gemini-3.1-pro-preview",
+            "name": "gemini-3.1-pro-preview",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "gpt-5",
+            "name": "gpt-5",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "gpt-5.2",
+            "name": "gpt-5.2",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "gpt-5.2-codex",
+            "name": "gpt-5.2-codex",
+            "input": [
+              "text",
+              "image"
+            ]
+          }
+        ]
+      },
+      "iflow": {
+        "baseUrl": "https://apis.iflow.cn/v1",
+        "apiKey": "REDACTED",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "deepseek-r1",
+            "name": "deepseek-r1",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "deepseek-v3",
+            "name": "deepseek-v3",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "deepseek-v3.2",
+            "name": "deepseek-v3.2",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "iflow-rome-30ba3b",
+            "name": "iflow-rome-30ba3b",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "kimi-k2",
+            "name": "kimi-k2",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "kimi-k2-0905",
+            "name": "kimi-k2-0905",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "qwen3-235b",
+            "name": "qwen3-235b",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "qwen3-235b-a22b-instruct",
+            "name": "qwen3-235b-a22b-instruct",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "qwen3-235b-a22b-thinking-2507",
+            "name": "qwen3-235b-a22b-thinking-2507",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "qwen3-32b",
+            "name": "qwen3-32b",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "qwen3-coder-plus",
+            "name": "qwen3-coder-plus",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "qwen3-max",
+            "name": "qwen3-max",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "qwen3-max-preview",
+            "name": "qwen3-max-preview",
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "qwen3-vl-plus",
+            "name": "qwen3-vl-plus",
+            "input": [
+              "text",
+              "image"
+            ]
+          }
+        ]
+      },
+      "qtcool": {
+        "baseUrl": "https://gpt.qt.cool/v1",
+        "apiKey": "REDACTED",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "gpt-5.2-codex",
+            "name": "gpt-5.2-codex",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "contextWindow": 128000
+          },
+          {
+            "id": "gpt-5.2",
+            "name": "gpt-5.2",
+            "reasoning": false,
+            "input": [
+              "text",
+              "image"
+            ],
+            "contextWindow": 128000
+          },
+          {
+            "id": "gpt-5.1-codex-mini",
+            "name": "gpt-5.1-codex-mini",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "contextWindow": 128000
+          },
+          {
+            "id": "gpt-5.1-codex-max",
+            "name": "gpt-5.1-codex-max",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "contextWindow": 128000
+          },
+          {
+            "id": "gpt-5.1-codex",
+            "name": "gpt-5.1-codex",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "contextWindow": 128000
+          },
+          {
+            "id": "gpt-5.1",
+            "name": "gpt-5.1",
+            "reasoning": false,
+            "input": [
+              "text",
+              "image"
+            ],
+            "contextWindow": 128000
+          },
+          {
+            "id": "gpt-5-codex",
+            "name": "gpt-5-codex",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "contextWindow": 128000
+          },
+          {
+            "id": "gpt-5",
+            "name": "gpt-5",
+            "reasoning": false,
+            "input": [
+              "text",
+              "image"
+            ],
+            "contextWindow": 128000
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "CPAMC/gemini-2.5-flash",
+        "fallbacks": [
+          "zhipu/glm-4.7-flash",
+          "zhipu/glm-4.6v",
+          "CPAMC/gemini-2.5-flash-lite",
+          "CPAMC/gemini-2.5-pro",
+          "CPAMC/gemini-3-flash-preview",
+          "CPAMC/gemini-3-pro-preview",
+          "CPAMC/gemini-3.1-pro-preview",
+          "CPAMC/gpt-5",
+          "CPAMC/gpt-5.2",
+          "CPAMC/gpt-5.2-codex",
+          "iflow/deepseek-r1",
+          "iflow/deepseek-v3",
+          "iflow/deepseek-v3.2",
+          "iflow/iflow-rome-30ba3b",
+          "iflow/kimi-k2",
+          "iflow/kimi-k2-0905",
+          "iflow/qwen3-235b",
+          "iflow/qwen3-235b-a22b-instruct",
+          "iflow/qwen3-235b-a22b-thinking-2507",
+          "iflow/qwen3-32b",
+          "iflow/qwen3-coder-plus",
+          "iflow/qwen3-max",
+          "iflow/qwen3-max-preview",
+          "iflow/qwen3-vl-plus",
+          "qtcool/gpt-5.2-codex",
+          "qtcool/gpt-5.2",
+          "qtcool/gpt-5.1-codex-mini",
+          "qtcool/gpt-5.1-codex-max",
+          "qtcool/gpt-5.1-codex",
+          "qtcool/gpt-5.1",
+          "qtcool/gpt-5-codex",
+          "qtcool/gpt-5"
+        ]
+      },
+      "models": {
+        "CPAMC/gemini-2.5-flash": {},
+        "zhipu/glm-4.7-flash": {},
+        "zhipu/glm-4.6v": {},
+        "CPAMC/gemini-2.5-flash-lite": {},
+        "CPAMC/gemini-2.5-pro": {},
+        "CPAMC/gemini-3-flash-preview": {},
+        "CPAMC/gemini-3-pro-preview": {},
+        "CPAMC/gemini-3.1-pro-preview": {},
+        "CPAMC/gpt-5": {},
+        "CPAMC/gpt-5.2": {},
+        "CPAMC/gpt-5.2-codex": {},
+        "iflow/deepseek-r1": {},
+        "iflow/deepseek-v3": {},
+        "iflow/deepseek-v3.2": {},
+        "iflow/iflow-rome-30ba3b": {},
+        "iflow/kimi-k2": {},
+        "iflow/kimi-k2-0905": {},
+        "iflow/qwen3-235b": {},
+        "iflow/qwen3-235b-a22b-instruct": {},
+        "iflow/qwen3-235b-a22b-thinking-2507": {},
+        "iflow/qwen3-32b": {},
+        "iflow/qwen3-coder-plus": {},
+        "iflow/qwen3-max": {},
+        "iflow/qwen3-max-preview": {},
+        "iflow/qwen3-vl-plus": {},
+        "qtcool/gpt-5.2-codex": {},
+        "qtcool/gpt-5.2": {},
+        "qtcool/gpt-5.1-codex-mini": {},
+        "qtcool/gpt-5.1-codex-max": {},
+        "qtcool/gpt-5.1-codex": {},
+        "qtcool/gpt-5.1": {},
+        "qtcool/gpt-5-codex": {},
+        "qtcool/gpt-5": {}
+      },
+      "contextTokens": 131072,
+      "memorySearch": {
+        "enabled": false
+      },
+      "contextPruning": {
+        "mode": "cache-ttl",
+        "ttl": "1h",
+        "keepLastAssistants": 3,
+        "softTrimRatio": 0.3,
+        "hardClearRatio": 0.5,
+        "minPrunableToolChars": 50000,
+        "tools": {
+          "deny": [
+            "browser",
+            "canvas"
+          ]
+        },
+        "softTrim": {
+          "maxChars": 4000,
+          "headChars": 1500,
+          "tailChars": 1500
+        },
+        "hardClear": {
+          "enabled": true,
+          "placeholder": "[Old tool result content cleared]"
+        }
+      },
+      "compaction": {
+        "mode": "safeguard",
+        "reserveTokens": 24000,
+        "keepRecentTokens": 20000,
+        "reserveTokensFloor": 16000,
+        "identifierPolicy": "strict",
+        "model": "CPAMC/gemini-2.5-flash",
+        "memoryFlush": {
+          "enabled": true,
+          "softThresholdTokens": 6000
+        }
+      },
+      "sandbox": {
+        "mode": "off",
+        "workspaceAccess": "rw"
+      }
+    },
+    "list": [
+      {
+        "id": "main",
+        "name": "main",
+        "workspace": "/root/.openclaw/workspace",
+        "agentDir": "/root/.openclaw/agents/main/agent",
+        "model": {
+          "primary": "CPAMC/gemini-2.5-flash",
+          "fallbacks": []
+        }
+      },
+      {
+        "id": "main-super",
+        "name": "super",
+        "workspace": "/root/.openclaw/workspace",
+        "agentDir": "/root/.openclaw/agents/main-super/agent",
+        "model": {
+          "primary": "CPAMC/gemini-2.5-flash",
+          "fallbacks": []
+        }
+      },
+      {
+        "id": "gemini",
+        "name": "gemini",
+        "workspace": "/root/.openclaw/workspace-gemini",
+        "agentDir": "/root/.openclaw/agents/gemini/agent",
+        "model": "CPAMC/gemini-2.5-flash"
+      }
+    ]
+  },
+  "tools": {
+    "profile": "full",
+    "elevated": {
+      "enabled": true,
+      "allowFrom": {
+        "telegram": [
+          "5086179479"
+        ]
+      }
+    },
+    "exec": {
+      "host": "gateway",
+      "security": "full",
+      "ask": "off"
+    }
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "dmPolicy": "pairing",
+      "groups": {},
+      "allowFrom": [
+        "5086179479"
+      ],
+      "groupPolicy": "allowlist",
+      "streaming": "partial",
+      "accounts": {
+        "default": {
+          "botToken": "REDACTED"
+        },
+        "gemini": {
+          "botToken": "REDACTED"
+        }
+      }
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "controlUi": {
+      "allowedOrigins": [
+        "*",
+        "tauri://localhost",
+        "https://tauri.localhost",
+        "http://localhost",
+        "http://localhost:1420",
+        "http://127.0.0.1:1420",
+        "http://208.117.84.181:1420"
+      ]
+    },
+    "auth": {
+      "mode": "token",
+      "token": "REDACTED"
+    },
+    "trustedProxies": [
+      "127.0.0.1",
+      "::1"
+    ]
+  },
+  "bindings": [
+    {
+      "agentId": "main",
+      "match": {
+        "channel": "telegram",
+        "accountId": "default"
+      }
+    },
+    {
+      "agentId": "gemini",
+      "match": {
+        "channel": "telegram",
+        "accountId": "gemini"
+      }
+    }
+  ]
+}
